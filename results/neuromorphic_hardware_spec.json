@@ -1,0 +1,38 @@
+{
+  "tier_name": "Tier 3: Streamlined Core (~128 Neurons)",
+  "neuron_count": 148,
+  "synapse_count": 1095,
+  "compression_ratio_pct": 93.56521739130434,
+  "flight_control_retention_pct": 100.0,
+  "neuromorphic_hardware_estimates": {
+    "estimated_sram_kb": 17.8046875,
+    "estimated_active_power_uW": 0.037,
+    "synaptic_ops_per_sec": 54750,
+    "compatible_chips": [
+      "Intel Loihi 2",
+      "SynSense DynapCNN",
+      "BrainChip Akida",
+      "Custom Sub-mW ASIC"
+    ]
+  },
+  "circuit_breakdown": {
+    "haltere_sensory": 50,
+    "motor_neuron": 34,
+    "descending_neuron": 24,
+    "wing_sensory": 16,
+    "premotor_interneuron": 16,
+    "visual_sensory": 8
+  },
+  "preserved_motor_types": [
+    "DLMn a, b",
+    "DLMn c-f",
+    "DVMn 1a-c",
+    "DVMn 2a, b",
+    "DVMn 3a, b",
+    "b1 MN",
+    "b2 MN",
+    "hg2 MN",
+    "i1 MN",
+    "i2 MN"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "total_candidates": 2300,
+  "breakdown": {
+    "wing_sensory": 1196,
+    "haltere_sensory": 439,
+    "descending_neuron": 282,
+    "motor_neuron": 187,
+    "premotor_interneuron": 150,
+    "visual_sensory": 46
+  },
+  "neurotransmitter_breakdown": {
+    "acetylcholine": 1872,
+    "unclear": 182,
+    "glutamate": 148,
+    "gaba": 81,
+    "serotonin": 17
+  },
+  "hemisphere_breakdown": {
+    "unknown": 1635,
+    "L": 332,
+    "R": 330,
+    "M": 3
+  }
+}

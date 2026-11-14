@@ -1,0 +1,46 @@
+{
+  "total_neurons": 10668,
+  "total_synapses": 527309,
+  "circuit_roles": {
+    "tactile_sensory": 2558,
+    "premotor_interneuron": 2000,
+    "mechanosensory": 1629,
+    "proprioceptive_sensory": 1393,
+    "ascending_neuron": 1370,
+    "descending_neuron": 898,
+    "motor_neuron": 708,
+    "haltere_sensory": 50,
+    "visual_lptc": 38,
+    "wing_sensory": 16,
+    "visual_sensory": 8
+  },
+  "motor_neuron_breakdown": {
+    "front_legs_fl": 135,
+    "middle_legs_ml": 116,
+    "hind_legs_hl": 130,
+    "wings_flight_wm": 67,
+    "abdomen_ad": 214,
+    "neck_head_nm": 24,
+    "haltere_hm": 16,
+    "special_jump_xm": 6,
+    "total_motor_neurons": 708
+  },
+  "neurotransmitter_distribution": {
+    "acetylcholine": 8261,
+    "gaba": 1101,
+    "glutamate": 731,
+    "unclear": 493,
+    "unknown": 61,
+    "serotonin": 17,
+    "histamine": 4
+  },
+  "sensory_systems": {
+    "haltere_gyroscopes": 50,
+    "visual_lptc_motion": 46,
+    "proprioceptive_feco": 1393,
+    "tactile_bristles_hairplates": 2558,
+    "mechanosensory_strain": 1629
+  },
+  "descending_command_neurons": 898,
+  "premotor_interneurons": 2000
+}

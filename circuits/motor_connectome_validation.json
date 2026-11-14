@@ -1,0 +1,15 @@
+{
+  "graph_nodes": 10663,
+  "graph_edges": 527218,
+  "sensory_count": 5687,
+  "motor_count": 708,
+  "dn_count": 898,
+  "premotor_count": 2000,
+  "mn_reachability_pct": 99.85875706214689,
+  "mn_with_input_pct": 99.85875706214689,
+  "num_recurrent_circuits": 17,
+  "largest_recurrent_size": 9718,
+  "flight_pathways_intact": true,
+  "walking_pathways_intact": true,
+  "motor_input_sufficient": true
+}

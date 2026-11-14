@@ -1,0 +1,23 @@
+{
+  "baseline_897n": {
+    "name": "Baseline Brain (897n)",
+    "crashed": true,
+    "steps_completed": 383,
+    "peak_roll_deg": 121.79210389379561,
+    "final_roll_deg": -97.55491019071727,
+    "mean_altitude_m": 0.6685265480454342,
+    "final_altitude_m": 0.715253579015446,
+    "recovery_time_s": 0.8
+  },
+  "comprehensive_10668n": {
+    "name": "Comprehensive Mobility Brain (10668n)",
+    "crashed": false,
+    "steps_completed": 268,
+    "peak_roll_deg": 10.955615399682644,
+    "final_roll_deg": 2.192175143622723,
+    "mean_altitude_m": 0.6685704529662887,
+    "final_altitude_m": 0.5406254863495221,
+    "recovery_time_s": 0.8
+  },
+  "stability_preserved": true
+}

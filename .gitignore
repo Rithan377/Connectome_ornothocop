@@ -1,0 +1,39 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environments
+myenv/
+venv/
+.venv/
+env/
+
+# Raw Large Dataset Downloads (>1 GB GCS files)
+data/
+
+# Local MuJoCo binaries & dumps
+tools/
+MJMODEL.TXT
+*.log
+screenshot.png
+
+# Web Visualization Code & Bundles (Excluded per user request)
+graphify-out/
+visualizations/*.html
+visualizations/fly_assets/
+visualizations/js/
+visualizations/*.glb
+visualizations/*.mp4
+visualizations/*.json
+
+# Operating System & IDE Artifacts
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo

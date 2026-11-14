@@ -1,0 +1,39 @@
+{
+  "total_neurons": 10663,
+  "total_edges": 527218,
+  "removed_neurons": 200914,
+  "role_breakdown": {
+    "tactile_sensory": 2558,
+    "premotor_interneuron": 2000,
+    "mechanosensory": 1629,
+    "proprioceptive_sensory": 1454,
+    "ascending_neuron": 1370,
+    "descending_neuron": 898,
+    "motor_neuron": 708,
+    "visual_lptc": 46
+  },
+  "motor_subclass_breakdown": {
+    "ad": 214,
+    "fl": 135,
+    "hl": 130,
+    "ml": 116,
+    "wm": 67,
+    "nm": 24,
+    "hm": 16,
+    "xm": 6
+  },
+  "neurotransmitter_breakdown": {
+    "acetylcholine": 8259,
+    "gaba": 1101,
+    "glutamate": 731,
+    "unclear": 490,
+    "unknown": 61,
+    "serotonin": 17,
+    "histamine": 4
+  },
+  "parameters": {
+    "min_synapse_weight": 2,
+    "dn_to_mn_threshold": 10,
+    "premotor_to_mn_threshold": 5
+  }
+}

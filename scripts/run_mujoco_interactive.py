@@ -1,0 +1,286 @@
+#!/usr/bin/env python3
+"""
+Interactive Native MuJoCo Flight Simulator with Drosophila Connectome.
+
+Launches the official native MuJoCo GLFW viewer window directly on the desktop
+running the exact Connectome-Hybrid flight controller from `connectome_mujoco_flight.mp4`.
+"""
+
+import os
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+import sys
+import time
+import argparse
+from typing import Optional, Dict, Any, List
+import numpy as np
+import tensorflow as tf
+
+WORKSPACE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, WORKSPACE_ROOT)
+
+import mujoco
+import mujoco.viewer
+
+from orthocop.flybody.closed_loop import ClosedLoopFlyBodySim
+
+
+def sync_to_viewer(src_d, dst_d, model):
+    """Synchronize physical state from dm_control physics to viewer MjData."""
+    np.copyto(dst_d.qpos, src_d.qpos)
+    np.copyto(dst_d.qvel, src_d.qvel)
+    if model.na > 0 and len(dst_d.act) == len(src_d.act):
+        np.copyto(dst_d.act, src_d.act)
+    if model.nmocap > 0 and len(dst_d.mocap_pos) == len(src_d.mocap_pos):
+        np.copyto(dst_d.mocap_pos, src_d.mocap_pos)
+        np.copyto(dst_d.mocap_quat, src_d.mocap_quat)
+    dst_d.time = src_d.time
+    mujoco.mj_forward(model, dst_d)
+
+
+def run_interactive_mujoco(
+    duration: float = 0.0,
+    connectome_blend: float = 0.35,
+    auto_perturb: bool = False,
+    perturb_interval: float = 5.0,
+    perturb_strength: float = 5.0,
+    brain_type: str = 'comprehensive',
+    takeoff: bool = True,
+    mode: str = 'hover',
+    speed: Optional[float] = None,
+):
+    print("=" * 75)
+    print("   DROSOPHILA CONNECTOME — NATIVE MUJOCO 3D FLIGHT SIMULATOR")
+    if brain_type == 'comprehensive':
+        nodes_path = 'circuits/comprehensive_mobility_nodes.feather'
+        edges_path = 'circuits/comprehensive_mobility_edges.feather'
+        print("   [Comprehensive Mobility Brain: 10,668 neurons | 527K synapses]")
+    else:
+        nodes_path = 'circuits/baseline_flight_brain_nodes.feather'
+        edges_path = 'circuits/baseline_flight_brain_edges.feather'
+        print("   [Baseline Flight Brain: 897 neurons | 34K synapses]")
+    print(f"   [Flight Mode: {mode.upper()} | Start Ground Takeoff: {takeoff} | Blend: {connectome_blend:.2f}]")
+    print("=" * 75)
+    print(f"[*] [1/4] Loading Connectome brain & neural circuits ({brain_type.capitalize()})...", flush=True)
+    t_start = time.time()
+    
+    sim = ClosedLoopFlyBodySim(
+        controller_type='connectome_hybrid',
+        nodes_path=nodes_path,
+        edges_path=edges_path,
+        connectome_blend=connectome_blend
+    )
+    print(f"[*] [2/4] Initializing FlyBody physical dynamics & sensors ({time.time() - t_start:.2f}s)...", flush=True)
+    env = sim.env
+    m = env.physics.model.ptr
+    d_viewer = mujoco.MjData(m)
+
+    target_z = 0.55
+    print(f"[*] [3/4] Configuring '{mode.upper()}' flight trajectory & motor decoder...", flush=True)
+    env.configure_flight_mode(
+        mode=mode,
+        speed=speed,
+        target_z=target_z,
+        duration=25.0,
+        start_on_ground=takeoff,
+        climb_duration=0.40
+    )
+
+    if mode == 'exploratory':
+        sim.decoder.use_ref_tracking = False
+        import types
+        task = env.env._task
+        def safe_term(task_self, physics):
+            height = physics.data.qpos[2]
+            t = physics.time()
+            if t > 0.15 and height < 0.025:
+                return True
+            return False
+        task.check_termination = types.MethodType(safe_term, task)
+
+    state = env.reset(start_on_ground=takeoff)
+    if sim.circuit is not None:
+        sim.circuit.reset()
+    if takeoff:
+        env.trigger_takeoff_jump(jump_speed=1.2, forward_speed=0.0)
+    sync_to_viewer(env.physics.data.ptr, d_viewer, m)
+
+    # Find thorax body id for camera tracking
+    thorax_id = 2
+    for i in range(m.nbody):
+        name = env.physics.model.id2name(i, 'body')
+        if name and ('thorax' in name or 'walker/thorax' in name):
+            thorax_id = i
+            break
+
+    print(f"[*] [4/4] Opening native MuJoCo interactive GUI window (Ready in {time.time() - t_start:.2f}s total)...", flush=True)
+    print(f"    • Camera tracking target: body '{env.physics.model.id2name(thorax_id, 'body')}' (id={thorax_id})")
+    print("[*] Launching native MuJoCo interactive GUI window...")
+    print("    • Viewport: Auto-tracking camera centered on fly")
+    print("    • Spacebar / Run / Pause: Toggles simulation play/pause")
+    print("    • Left Mouse Drag: Rotate 3D View")
+    print("    • Right Mouse Drag: Pan Camera / Move")
+    print("    • Scroll Wheel: Zoom In / Out")
+    print("    • Ctrl + Right-Click Drag: Grab & tug any body part with physical force!")
+    print("    • Ctrl + Left-Click Drag: Apply torque / twist fly")
+    print("    • Backspace: Reset Fly")
+    print("    • Close window or Ctrl+C in terminal to exit")
+    print("-" * 70)
+
+    with mujoco.viewer.launch_passive(m, d_viewer) as viewer:
+        sim_ctrl = viewer._get_sim()
+
+        # Camera configuration: close-up tracking view of the fruit fly in mid-air
+        viewer.cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
+        viewer.cam.trackbodyid = thorax_id
+        viewer.cam.distance = 0.05      # 5 cm distance
+        viewer.cam.elevation = -12.0
+        viewer.cam.azimuth = 135.0
+        viewer.cam.lookat[0] = d_viewer.xpos[thorax_id, 0]
+        viewer.cam.lookat[1] = d_viewer.xpos[thorax_id, 1]
+        viewer.cam.lookat[2] = d_viewer.xpos[thorax_id, 2]
+
+        step_idx = 0
+        episode_step = 0
+        dt = env.dt_ctrl
+        last_perturb_time = 0.0
+        sim_time = 0.0
+
+        perturb_types = ['roll_kick', 'pitch_kick', 'yaw_kick']
+        perturb_idx = 0
+
+        while viewer.is_running():
+            step_start = time.time()
+
+            # Respect GUI Pause / Run state
+            if not sim_ctrl.run:
+                viewer.sync()
+                time.sleep(0.02)
+                continue
+
+            sim_time = step_idx * dt
+
+            # Optional perturbation testing
+            if auto_perturb and (sim_time - last_perturb_time >= perturb_interval) and sim_time >= 2.0:
+                ptype = perturb_types[perturb_idx % len(perturb_types)]
+                if ptype == 'roll_kick':
+                    env.apply_torque_kick(roll_kick=perturb_strength)
+                    print(f"\n[⚡ PERTURBATION] Injected Roll Kick ({perturb_strength:.1f} rad/s) at t={sim_time:.2f}s")
+                elif ptype == 'pitch_kick':
+                    env.apply_torque_kick(pitch_kick=perturb_strength)
+                    print(f"\n[⚡ PERTURBATION] Injected Pitch Kick ({perturb_strength:.1f} rad/s) at t={sim_time:.2f}s")
+                elif ptype == 'yaw_kick':
+                    env.apply_torque_kick(yaw_kick=perturb_strength)
+                    print(f"\n[⚡ PERTURBATION] Injected Yaw Kick ({perturb_strength:.1f} rad/s) at t={sim_time:.2f}s")
+                last_perturb_time = sim_time
+                perturb_idx += 1
+
+            # --- Exact Hybrid Controller Computation ---
+            obs_tf = {
+                k: tf.convert_to_tensor(np.expand_dims(v, 0), dtype=tf.float32)
+                for k, v in state['raw_observation'].items()
+            }
+            base_action = sim.pretrained_policy(obs_tf).mean()[0].numpy()
+
+            sensory = sim.encoder.update(state)
+            motor_rates = sim.circuit.step(sensory)
+            conn_action = sim.decoder.decode(motor_rates, state['euler'], state=state, target_z=target_z)
+
+            action = base_action + connectome_blend * conn_action
+            action = np.clip(action, env.env.action_spec().minimum, env.env.action_spec().maximum)
+
+            state, reward, done = env.step(action)
+            episode_step += 1
+
+            # Sync to viewer
+            with viewer.lock():
+                sync_to_viewer(env.physics.data.ptr, d_viewer, m)
+                viewer.cam.lookat[0] = d_viewer.xpos[thorax_id, 0]
+                viewer.cam.lookat[1] = d_viewer.xpos[thorax_id, 1]
+                viewer.cam.lookat[2] = d_viewer.xpos[thorax_id, 2]
+
+            viewer.sync()
+
+            # Episode looping: only reset on genuine crash (below floor after launch or inverted)
+            if mode == 'exploratory':
+                is_crashed = (sim_time > 0.40) and (state['pos'][2] < 0.025)
+            else:
+                is_crashed = (sim_time > 0.40) and (state['pos'][2] < 0.025 or abs(state['euler'][0]) > np.deg2rad(120.0))
+            if done or is_crashed:
+                env.configure_flight_mode(
+                    mode=mode,
+                    speed=speed,
+                    target_z=target_z,
+                    duration=25.0,
+                    start_on_ground=takeoff,
+                    climb_duration=0.40
+                )
+                state = env.reset(start_on_ground=takeoff)
+                if sim.circuit is not None:
+                    sim.circuit.reset()
+                if takeoff:
+                    env.trigger_takeoff_jump(jump_speed=1.2, forward_speed=0.0)
+                episode_step = 0
+                last_perturb_time = sim_time
+                with viewer.lock():
+                    sync_to_viewer(env.physics.data.ptr, d_viewer, m)
+                viewer.sync()
+
+            # Telemetry display every 100 steps (~20ms)
+            if step_idx % 100 == 0:
+                euler_deg = state['euler'] * 180.0 / np.pi
+                pos = state['pos']
+                vel = state['lin_vel']
+                speed_cms = np.linalg.norm(vel) * 100.0
+                dlm_rate = motor_rates.get('DLM_L', 0)
+                steer_rate = np.mean([motor_rates.get('roll_L', 0), motor_rates.get('pitch_L', 0)])
+                sys.stdout.write(
+                    f"\r[{mode.upper():7s}] t={sim_time:6.2f}s | "
+                    f"Alt={pos[2]*100:5.1f}cm | "
+                    f"Speed={speed_cms:5.1f}cm/s | "
+                    f"R={euler_deg[0]:+5.1f}° P={euler_deg[1]:+5.1f}° Y={euler_deg[2]:+5.1f}° | "
+                    f"DLM: {dlm_rate:.0f}Hz | Steer: {steer_rate:.0f}Hz"
+                )
+                sys.stdout.flush()
+
+            step_idx += 1
+
+            # Real-time synchronization
+            elapsed = time.time() - step_start
+            sleep_time = dt - elapsed
+            if sleep_time > 0.0001:
+                time.sleep(sleep_time)
+
+            if duration > 0 and sim_time >= duration:
+                print(f"\n[+] Reached duration limit ({duration}s). Continuing indefinitely...")
+                duration = 0
+
+    print("\n[*] Native MuJoCo viewer closed.")
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Native MuJoCo Fruit Fly Connectome-Hybrid Simulator')
+    parser.add_argument('--duration', type=float, default=0, help='Duration in seconds (0 = infinite)')
+    parser.add_argument('--brain', type=str, default='comprehensive', choices=['comprehensive', 'baseline'],
+                        help='Brain model: comprehensive (10,668n) or baseline (897n)')
+    parser.add_argument('--blend', type=float, default=0.35, help='Connectome blend factor (default 0.35)')
+    parser.add_argument('--mode', type=str, default='hover', choices=['hover', 'cruise', 'loop', 'diagonal', 'exploratory'],
+                        help='Flight maneuver: hover, cruise, loop, diagonal, or exploratory')
+    parser.add_argument('--speed', type=float, default=None, help='Flight speed in m/s (default: 0.70 m/s for cruise)')
+    parser.add_argument('--auto-perturb', action='store_true', help='Enable automatic periodic perturbation kicks')
+    parser.add_argument('--kick', type=float, default=5.0, help='Perturbation kick magnitude (rad/s)')
+    parser.add_argument('--no-takeoff', dest='takeoff', action='store_false', help='Disable ground takeoff and start in mid-air')
+    parser.set_defaults(takeoff=True)
+    args = parser.parse_args()
+
+    run_interactive_mujoco(
+        duration=args.duration,
+        connectome_blend=args.blend,
+        auto_perturb=args.auto_perturb,
+        perturb_strength=args.kick,
+        brain_type=args.brain,
+        takeoff=args.takeoff,
+        mode=args.mode,
+        speed=args.speed
+    )

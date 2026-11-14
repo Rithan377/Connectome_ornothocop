@@ -1,0 +1,137 @@
+{
+  "flight": {
+    "wing_mn_total": 67,
+    "wing_mn_coverage_pct": 100.0,
+    "haltere_sensory_coverage_pct": 90.20501138952164,
+    "dn_coverage_pct": 100.0,
+    "visual_lptc_coverage_pct": 100.0,
+    "haltere_to_wing_mn_paths": 50,
+    "visual_to_wing_mn_paths": 20,
+    "dn_to_wing_mn_paths": 100,
+    "neck_mn_count": 24,
+    "flight_100pct_coverage": true
+  },
+  "walking": {
+    "fl": {
+      "total_mns": 215,
+      "left": 106,
+      "right": 109,
+      "bilateral": true,
+      "muscle_types": 53,
+      "proprio_to_mn_paths": 30
+    },
+    "ml": {
+      "total_mns": 117,
+      "left": 59,
+      "right": 58,
+      "bilateral": true,
+      "muscle_types": 26,
+      "proprio_to_mn_paths": 30
+    },
+    "hl": {
+      "total_mns": 132,
+      "left": 67,
+      "right": 65,
+      "bilateral": true,
+      "muscle_types": 28,
+      "proprio_to_mn_paths": 30
+    },
+    "abdomen": {
+      "total_mns": 224,
+      "left": 110,
+      "right": 112
+    },
+    "walking_complete": true
+  },
+  "critical_nodes": {
+    "top_n": 50,
+    "role_distribution": {
+      "ascending_neuron": 37,
+      "descending_neuron": 13
+    },
+    "top_15_body_ids": [
+      556329,
+      10447,
+      26241,
+      12781,
+      23382,
+      26471,
+      11466,
+      12151,
+      524518,
+      13135,
+      11540,
+      12601,
+      63701,
+      11160,
+      23826
+    ],
+    "premotor_critical_pct": 0.0,
+    "dn_critical_pct": 26.0
+  },
+  "neurotransmitter": {
+    "distribution": {
+      "acetylcholine": 8259,
+      "gaba": 1101,
+      "glutamate": 731,
+      "unclear": 490,
+      "unknown": 61,
+      "serotonin": 17,
+      "histamine": 4
+    },
+    "ei_ratio": 4.508187772925764,
+    "excitatory": 8259,
+    "inhibitory_gaba": 1101,
+    "inhibitory_glutamate": 731
+  },
+  "comparison": {
+    "motor_total": 10663,
+    "flight_148_overlap": 147,
+    "flight_148_coverage_pct": 99.32432432432432,
+    "full_2300_overlap": 1881,
+    "full_2300_coverage_pct": 81.78260869565217,
+    "new_neurons_count": 8782,
+    "new_by_role": {
+      "tactile_sensory": 1903,
+      "premotor_interneuron": 1850,
+      "mechanosensory": 1629,
+      "ascending_neuron": 1370,
+      "proprioceptive_sensory": 893,
+      "descending_neuron": 616,
+      "motor_neuron": 521
+    }
+  },
+  "flybody_flight": {
+    "stabilized_flight_897": {
+      "status": "success",
+      "steps_completed": 236,
+      "rms_attitude_deg": 31.72920071613644,
+      "altitude_change_m": -0.3819274421870934,
+      "trajectory_drift_m": 0.8879362143449416,
+      "stable": true
+    },
+    "ultra_minimal_148": {
+      "status": "success",
+      "steps_completed": 224,
+      "rms_attitude_deg": 89.80549910257925,
+      "altitude_change_m": -0.6009552260012889,
+      "trajectory_drift_m": 1.1610517578514492,
+      "stable": false
+    },
+    "full_motor_10663": {
+      "status": "success",
+      "steps_completed": 165,
+      "rms_attitude_deg": 73.3103907333031,
+      "altitude_change_m": -0.5005939470763427,
+      "trajectory_drift_m": 1.1102151183556843,
+      "stable": false
+    }
+  },
+  "flygym_walking": {
+    "status": "success",
+    "steps_completed": 5000,
+    "displacement_m": 2.7406236203839596,
+    "height_stability": 0.19777894566804066,
+    "walking": true
+  }
+}
