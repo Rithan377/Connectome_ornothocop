@@ -148,9 +148,9 @@ Rotational circulation and added-mass forces are computed instantaneously to mod
 ## 4. Closed-Loop Hybrid Control Architecture
 
 <p align="center">
-  <img src="assets/native_mujoco_fresh_launch.png" alt="Native MuJoCo FruitFly Interactive Simulator" width="85%">
+  <img src="assets/mujoco_walker_hero.png" alt="MuJoCo FruitFly Hero View" width="85%">
   <br>
-  <i>Figure 3: Closed-Loop Embodying: Fruit Fly (Drosophila melanogaster) in Real-Time MuJoCo 3D Viewport with Active Ground Takeoff Stance.</i>
+  <i>Figure 3: Closed-Loop Embodiment: Fruit Fly (Drosophila melanogaster) in 5,000 Hz Aerodynamic MuJoCo Viewport.</i>
 </p>
 
 ### 4.1 Spiking Neural Dynamics (Brian2)
@@ -381,3 +381,4 @@ If you use this work, the extracted flight connectome subcircuits, or the hybrid
 <p align="center">
   <sub>Built with ❤️ by <b>Rithan Nandakumar</b> • Department of AI & Data Science, Anna University, Chennai</sub>
 </p>
+

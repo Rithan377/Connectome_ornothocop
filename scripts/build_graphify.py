@@ -69,7 +69,7 @@ def main():
     labels = {cid: f"Community {cid}" for cid in communities}
     questions = suggest_questions(G, communities, labels)
     
-    to_json(G, communities, str(out_dir / "graph.json"))
+    to_json(G, communities, str(out_dir / "graph.json"), force=True)
     report = generate(G, communities, cohesion, labels, gods, surprises, detect_res, {'input': 0, 'output': 0}, '.', suggested_questions=questions)
     (out_dir / "GRAPH_REPORT.md").write_text(report, encoding="utf-8")
     
