@@ -109,15 +109,16 @@ def generate_flight_trajectory(num_points=2400):
     return trajectory
 
 
-def generate_scaled_flight_trajectory(task_dt: float = 0.0002, v_cruise: float = 0.70):
+def generate_scaled_flight_trajectory(task_dt: float = 0.0002, v_cruise: float = 0.85):
     """
     Construct the physical flight trajectory scaled to the FlyBody arena:
     - Shifts XY coordinates so that Waypoint 0 starts at the natural arena origin (0, 0)
-    - Maps altitude Z from [3, 19] grid units to biological flight envelope [0.38m, 0.65m]
-    - Arc-length parameterizes path for smooth constant cruise velocity (v_cruise = 0.70 m/s)
+    - Spaces out trajectory width by 2.2x (scale_xy = 0.075 -> 1.36m width, 1.29m depth)
+    - Expands altitude Z envelope by 2.0x (0.36m to 0.88m, 52cm vertical flight range)
+    - Arc-length parameterizes path for smooth constant cruise velocity (v_cruise = 0.85 m/s)
     - Full 360° continuous tangent heading (no backwards flight)
     - Coordinated dynamic banking into turns: bank = -arctan(v_xy * dpsi / g)
-    - Ground launch jump from origin (0, 0, 0.05m) to (0, 0, 0.38m)
+    - Ground launch jump from origin (0, 0, 0.05m) to (0, 0, 0.36m)
     - Full closed-loop 42-point B-spline traversal
     - Terminal hover stabilization at closed loop destination
     """
@@ -134,20 +135,25 @@ def generate_scaled_flight_trajectory(task_dt: float = 0.0002, v_cruise: float =
     u_fine = np.linspace(0, 1, 12000)
     x_raw, y_raw, z_raw = splev(u_fine, spline)
 
-    scale_xy = 0.035
-    z_min_fly = 0.38
-    z_max_fly = 0.65
-    scale_z = (z_max_fly - z_min_fly) / (19.0 - 3.0)
+    # Align initial trajectory heading with +X axis (forward launch)
+    dx0 = x_raw[1] - x_raw[0]
+    dy0 = y_raw[1] - y_raw[0]
+    angle0 = np.arctan2(dy0, dx0)
 
-    x_scaled = x_raw * scale_xy
-    y_scaled = y_raw * scale_xy
-    z_scaled = z_min_fly + (z_raw - 3.0) * scale_z
-    pts_fly = np.column_stack((x_scaled, y_scaled, z_scaled))
+    cos_a = np.cos(-angle0)
+    sin_a = np.sin(-angle0)
+    x_rot = cos_a * x_raw - sin_a * y_raw
+    y_rot = sin_a * x_raw + cos_a * y_raw
 
-    # Compute arc length
-    diffs = np.diff(pts_fly, axis=0)
-    seg_lens = np.sqrt(np.sum(diffs**2, axis=1))
-    cum_lens = np.concatenate(([0], np.cumsum(seg_lens)))
+    # Spaced out scale: width ~1.45m, depth ~1.29m, height ~0.52m
+    scale_xy = 0.075
+    z_min_fly = 0.36
+    z_max_fly = 0.88
+    scale_z = (z_max_fly - z_min_fly) / (np.max(z_raw) - 3.0)
+
+    # Arc length calculation
+    diffs = np.sqrt(np.diff(x_rot * scale_xy)**2 + np.diff(y_rot * scale_xy)**2 + np.diff((z_raw - 3.0) * scale_z)**2)
+    cum_lens = np.concatenate(([0], np.cumsum(diffs)))
     total_length = cum_lens[-1]
 
     dur_acro = total_length / v_cruise
@@ -156,11 +162,14 @@ def generate_scaled_flight_trajectory(task_dt: float = 0.0002, v_cruise: float =
 
     # Arc-length reparameterization for constant cruise speed
     u_s = np.interp(s_eval, cum_lens, u_fine)
-    x_s, y_s, z_s = splev(u_s, spline)
+    x_s = np.interp(u_s, u_fine, x_rot)
+    y_s = np.interp(u_s, u_fine, y_rot)
+    _, _, z_s = splev(u_s, spline)
+
     pos_acro = np.column_stack((x_s * scale_xy, y_s * scale_xy, z_min_fly + (z_s - 3.0) * scale_z))
 
-    # 1. Ground launch climb from (0, 0, 0.05m) to (0, 0, pos_acro[0, 2]) in 0.60s
-    dur_climb = 0.60
+    # 1. Ground launch climb from (0, 0, 0.05m) to (0, 0, pos_acro[0, 2]) in 0.40s
+    dur_climb = 0.40
     n_climb = int(dur_climb / task_dt)
     t_climb = np.linspace(0, 1, n_climb)
     s_curve = 3 * t_climb**2 - 2 * t_climb**3
@@ -168,13 +177,11 @@ def generate_scaled_flight_trajectory(task_dt: float = 0.0002, v_cruise: float =
 
     pos_climb = np.zeros((n_climb, 3))
     pos_climb[:, 2] = z_climb
-    vel_climb = np.gradient(pos_climb, task_dt, axis=0)
 
     # 2. Terminal hover stabilization at destination in 1.00s
     dur_hover = 1.00
     n_hover = int(dur_hover / task_dt)
     pos_hover = np.tile(pos_acro[-1], (n_hover, 1))
-    vel_hover = np.zeros((n_hover, 3))
 
     # Combine all position segments
     all_pos = np.concatenate([pos_climb, pos_acro, pos_hover], axis=0)
@@ -185,16 +192,19 @@ def generate_scaled_flight_trajectory(task_dt: float = 0.0002, v_cruise: float =
     v_xy = np.sqrt(vx**2 + vy**2)
 
     # Continuous 360° tangent heading
-    psi = np.unwrap(np.arctan2(vy, vx))
-    psi[:n_climb] = psi[n_climb]
+    psi = np.zeros(n_total)
+    psi[n_climb:] = np.unwrap(np.arctan2(vy[n_climb:], vx[n_climb:]))
+    psi[:n_climb] = 0.0
     dpsi = np.gradient(psi, task_dt)
 
     # Pitch tilt and dynamic banking ('bending over into turns')
-    gamma = np.arctan2(vz, np.maximum(v_xy, 1e-4))
+    gamma = np.zeros(n_total)
+    gamma[n_climb:] = np.arctan2(vz[n_climb:], np.maximum(v_xy[n_climb:], 1e-4))
     theta = np.deg2rad(-47.5) + 0.15 * gamma
-    bank = -np.arctan(np.clip(v_xy * dpsi / 9.81, -np.tan(np.deg2rad(25)), np.tan(np.deg2rad(25))))
-    bank[:n_climb] = 0.0
-    bank[-n_hover:] = 0.0
+    theta[:n_climb] = np.deg2rad(-47.5)
+
+    bank = np.zeros(n_total)
+    bank[n_climb:-n_hover] = -np.arctan(np.clip(v_xy[n_climb:-n_hover] * dpsi[n_climb:-n_hover] / 9.81, -np.tan(np.deg2rad(25)), np.tan(np.deg2rad(25))))
 
     qpos = np.zeros((n_total, 7))
     qvel = np.zeros((n_total, 6))
@@ -209,8 +219,8 @@ def generate_scaled_flight_trajectory(task_dt: float = 0.0002, v_cruise: float =
 
     total_duration = dur_climb + dur_acro + dur_hover
 
-    # Sparse ribbon points for 3D visualization capsules (200 segments along user trajectory)
-    stride = max(1, len(pos_acro) // 200)
+    # Sparse ribbon points for 3D visualization capsules (250 segments along user trajectory)
+    stride = max(1, len(pos_acro) // 250)
     ribbon_points = pos_acro[::stride]
 
     t_climb_end = dur_climb
@@ -222,7 +232,7 @@ def generate_scaled_flight_trajectory(task_dt: float = 0.0002, v_cruise: float =
         ('3. TERMINAL HOVER STABILIZATION', t_acro_end, total_duration + 1.0, (pos_acro[-1, 2], pos_acro[-1, 2]))
     ]
 
-    return qpos, qvel, total_duration, phase_intervals, bank, ribbon_points, (0.0, 0.0, 0.05)
+    return qpos, qvel, total_duration, phase_intervals, bank, psi, ribbon_points, (0.0, 0.0, 0.05)
 
 
 # ==========================================================
@@ -243,7 +253,7 @@ def add_flight_hud(frame, t, phase_name, euler_deg, pos, vel, motor_summary):
     z_cm = pos[2] * 100.0
 
     lines = [
-        f"DROSOPHILA 42-POINT 3D ACROBATIC FLIGHT  |  t={t:5.2f}s  |  True 1.0x Real-Time (60 FPS)",
+        f"DROSOPHILA SPACED-OUT 3D ACROBATIC FLIGHT  |  t={t:5.2f}s  |  True 1.0x Real-Time (60 FPS)",
         f"Phase: [{phase_name}]  |  Speed: {speed_cms:5.1f} cm/s  |  Pos: ({x_cm:+5.1f}, {y_cm:+5.1f}, {z_cm:5.1f}) cm",
         f"Attitude: Roll={euler_deg[0]:+5.1f}° (Bank)   Pitch={euler_deg[1]:+5.1f}°   Yaw={euler_deg[2]:+5.1f}°",
         f"Connectome: 10,668 Neurons (527K Synapses)  |  DLM Power: {motor_summary[0]:.0f}Hz  |  Steer: {motor_summary[1]:.0f}Hz"
@@ -294,9 +304,9 @@ def main():
     output_telemetry = os.path.join(output_dir, 'acrobatic_flight_telemetry.json')
 
     task_dt = 0.0002
-    v_cruise = 0.70
-    print(f"[*] Scaling trajectory to FlyBody physical arena at {v_cruise:.2f} m/s...")
-    qpos, qvel, total_duration, phase_intervals, ref_banks, ribbon_points, start_xyz = generate_scaled_flight_trajectory(
+    v_cruise = 0.85
+    print(f"[*] Scaling trajectory to FlyBody physical arena at {v_cruise:.2f} m/s (Spaced Out Loops)...")
+    qpos, qvel, total_duration, phase_intervals, ref_banks, ref_psis, ribbon_points, start_xyz = generate_scaled_flight_trajectory(
         task_dt=task_dt, v_cruise=v_cruise
     )
     n_sim_steps = len(qpos)
@@ -341,7 +351,7 @@ def main():
             self.filt_vz = 0.0
             self.prev_action = np.zeros(12)
 
-        def decode(self, motor_rates, current_euler, state=None, target_z=None, bank_ref=0.0, t=0.0):
+        def decode(self, motor_rates, current_euler, state=None, target_z=None, bank_ref=0.0, psi_ref=0.0, t=0.0):
             r0 = self.sim.decoder.r0_steer
             r0_pwr = self.sim.decoder.r0_power
             diff_yaw = (motor_rates.get('yaw_L', r0) - r0) - (motor_rates.get('yaw_R', r0) - r0)
@@ -365,12 +375,17 @@ def main():
             
             roll_err = current_euler[0] - bank_ref
             pitch_err = current_euler[1] - np.deg2rad(-47.5)
+            yaw_err = current_euler[2] - psi_ref
             
-            pd_roll = -0.22 * roll_err - 0.035 * self.filt_ang_vel[0]
-            pd_pitch = -0.18 * pitch_err - 0.035 * self.filt_ang_vel[1]
-            pd_yaw = -0.02 * self.filt_ang_vel[2]
+            pd_roll = -0.35 * roll_err - 0.015 * self.filt_ang_vel[0]
+            pd_pitch = -0.35 * pitch_err - 0.012 * self.filt_ang_vel[1]
+            pd_yaw = -0.010 * self.filt_ang_vel[2]
             
             action = np.zeros(12)
+            action[0] = np.clip(-0.2 * yaw_err, -0.15, 0.15)
+            action[1] = np.clip(-0.3 * roll_err, -0.4, 0.4)
+            action[2] = np.clip(-0.2 * pitch_err, -0.1, 0.1)
+
             action[3] = np.clip(conn_yaw + pd_roll, -1.0, 1.0)
             action[4] = np.clip(conn_roll + pd_pitch, -1.0, 1.0)
             action[5] = np.clip(conn_pitch, -1.0, 1.0)
@@ -384,7 +399,7 @@ def main():
                 alt_err = target_z - state['pos'][2]
                 cos_roll = max(0.5, np.cos(current_euler[0]))
                 bank_comp = (1.0 / cos_roll - 1.0) * 0.20
-                delta_freq += 1.4 * alt_err - 0.012 * self.filt_vz + 0.16 + bank_comp
+                delta_freq += 2.0 * alt_err - 0.012 * self.filt_vz + 0.16 + bank_comp
                 if state['pos'][2] < 0.12 and t > 0.35:
                     delta_freq += 0.40
             action[11] = np.clip(delta_freq, -1.0, 1.0)
@@ -420,10 +435,8 @@ def main():
     print(f"[*] Real-time render configuration: {fps} FPS, render every {render_every} steps ({render_every * task_dt * 1000:.1f}ms/frame)")
 
     # Ground stance initialization at arena center
-    ground_z = 0.05
     state = env.reset(start_on_ground=True)
-    env.physics.data.qpos[:3] = [0.0, 0.0, ground_z]
-    env.physics.forward()
+    env.set_ground_stance(ground_z=0.05, pitch_deg=-47.5)
 
     # Trigger middle leg jump takeoff reflex
     env.trigger_takeoff_jump(jump_speed=1.2, forward_speed=0.0)
@@ -432,7 +445,7 @@ def main():
 
     # Cyan trajectory ribbon scene callback for offscreen camera rendering
     cyan_rgba = np.array([0.10, 0.95, 0.85, 0.90], dtype=np.float32)
-    capsule_radius = 0.0016  # 1.6 mm thin cyan capsule ribbon
+    capsule_radius = 0.0020  # 2.0 mm cyan capsule ribbon for spaced-out path
     eye9 = np.eye(3).flatten()
     zeros3 = np.zeros(3)
     ribbon_p1 = np.ascontiguousarray(ribbon_points[:-1], dtype=np.float64)
@@ -497,7 +510,8 @@ def main():
 
         ref_z = qpos[s, 2]
         b_ref = ref_banks[s]
-        conn_action = decoder.decode(motor_rates, state['euler'], state=state, target_z=ref_z, bank_ref=b_ref, t=t)
+        p_ref = ref_psis[s]
+        conn_action = decoder.decode(motor_rates, state['euler'], state=state, target_z=ref_z, bank_ref=b_ref, psi_ref=p_ref, t=t)
         action = base_action + sim.connectome_blend * conn_action
         action = np.clip(action, env.env.action_spec().minimum, env.env.action_spec().maximum)
 
@@ -538,7 +552,7 @@ def main():
             print(f"  Step {s:5d}/{n_sim_steps} (t={t:4.2f}s) | [{phase_name[:25]}] Z={pos[2]*100:4.1f}cm, Speed={speed_cms:4.1f}cm/s, Frames={len(frames)} ({elapsed:.1f}s elapsed)")
 
         if d and s > 3000:
-            print(f"[!] Flight terminated early at step {s}")
+            print(f"[!] Flight terminated early at step {s} (t={t:.2f}s, height={pos[2]:.3f}m)")
             break
 
     # Save True 1.0x Real-Time MP4 Video

@@ -68,7 +68,7 @@ def render_trajectory(viewer, trajectory, stride=1):
             mujoco.mjv_connector(
                 geom,
                 mujoco.mjtGeom.mjGEOM_CAPSULE,
-                0.0016,  # 1.6mm thin ribbon capsule
+                0.0020,  # 2.0mm ribbon capsule for spaced-out path
                 p1,
                 p2
             )
@@ -116,13 +116,14 @@ def run_interactive_mujoco(
     target_z = 0.55
     ribbon_points = None
     ref_banks = None
+    ref_psis = None
 
     if mode == 'acrobatic':
         from scripts.run_acrobatic_flight_simulation import generate_scaled_flight_trajectory
         from flybody.tasks.trajectory_loaders import InferenceFlightTrajectoryLoader
-        print("[*] Generating exact 42-point 3D B-spline trajectory for MuJoCo visualizer...", flush=True)
-        qpos_acro, qvel_acro, total_dur, _, ref_banks, ribbon_points, start_xyz = generate_scaled_flight_trajectory(
-            task_dt=env.dt_ctrl, v_cruise=0.70
+        print("[*] Generating spaced-out 42-point 3D B-spline trajectory for MuJoCo visualizer...", flush=True)
+        qpos_acro, qvel_acro, total_dur, _, ref_banks, ref_psis, ribbon_points, start_xyz = generate_scaled_flight_trajectory(
+            task_dt=env.dt_ctrl, v_cruise=0.85
         )
         loader = InferenceFlightTrajectoryLoader()
         loader.set_next_trajectory(qpos_acro, qvel_acro)
@@ -169,7 +170,7 @@ def run_interactive_mujoco(
             self.filt_vz = 0.0
             self.prev_action = np.zeros(12)
 
-        def decode(self, motor_rates, current_euler, state=None, target_z=None, bank_ref=0.0):
+        def decode(self, motor_rates, current_euler, state=None, target_z=None, bank_ref=0.0, psi_ref=0.0):
             r0 = self.sim.decoder.r0_steer
             r0_pwr = self.sim.decoder.r0_power
             diff_yaw = (motor_rates.get('yaw_L', r0) - r0) - (motor_rates.get('yaw_R', r0) - r0)
@@ -190,12 +191,17 @@ def run_interactive_mujoco(
             
             roll_err = current_euler[0] - bank_ref
             pitch_err = current_euler[1] - np.deg2rad(-47.5)
+            yaw_err = current_euler[2] - psi_ref
             
-            pd_roll = -0.22 * roll_err - 0.035 * self.filt_ang_vel[0]
-            pd_pitch = -0.18 * pitch_err - 0.035 * self.filt_ang_vel[1]
-            pd_yaw = -0.02 * self.filt_ang_vel[2]
+            pd_roll = -0.35 * roll_err - 0.015 * self.filt_ang_vel[0]
+            pd_pitch = -0.35 * pitch_err - 0.012 * self.filt_ang_vel[1]
+            pd_yaw = -0.010 * self.filt_ang_vel[2]
             
             action = np.zeros(12)
+            action[0] = np.clip(-0.2 * yaw_err, -0.15, 0.15)
+            action[1] = np.clip(-0.3 * roll_err, -0.4, 0.4)
+            action[2] = np.clip(-0.2 * pitch_err, -0.1, 0.1)
+
             action[3] = np.clip(conn_yaw + pd_roll, -1.0, 1.0)
             action[4] = np.clip(conn_roll + pd_pitch, -1.0, 1.0)
             action[5] = np.clip(conn_pitch, -1.0, 1.0)
@@ -209,7 +215,7 @@ def run_interactive_mujoco(
                 alt_err = target_z - state['pos'][2]
                 cos_roll = max(0.5, np.cos(current_euler[0]))
                 bank_comp = (1.0 / cos_roll - 1.0) * 0.20
-                delta_freq += 1.4 * alt_err - 0.012 * self.filt_vz + 0.16 + bank_comp
+                delta_freq += 2.0 * alt_err - 0.012 * self.filt_vz + 0.16 + bank_comp
             action[11] = np.clip(delta_freq, -1.0, 1.0)
             
             smoothed = (1.0 - self.alpha_act) * self.prev_action + self.alpha_act * action
@@ -219,10 +225,11 @@ def run_interactive_mujoco(
     acro_decoder = AcrobaticBalancedDecoder(sim, dt)
 
     state = env.reset(start_on_ground=takeoff)
+    if takeoff:
+        env.set_ground_stance(ground_z=0.05, pitch_deg=-47.5)
+        env.trigger_takeoff_jump(jump_speed=1.2, forward_speed=0.0)
     if sim.circuit is not None:
         sim.circuit.reset()
-    if takeoff:
-        env.trigger_takeoff_jump(jump_speed=1.2, forward_speed=0.0)
     sync_to_viewer(env.physics.data.ptr, d_viewer, m)
 
     # Find thorax body id for camera tracking
@@ -257,7 +264,7 @@ def run_interactive_mujoco(
         # Camera configuration: close-up tracking view of the fruit fly in mid-air
         viewer.cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
         viewer.cam.trackbodyid = thorax_id
-        viewer.cam.distance = 0.05      # 5 cm distance
+        viewer.cam.distance = 0.10 if mode == 'acrobatic' else 0.05
         viewer.cam.elevation = -12.0
         viewer.cam.azimuth = 135.0
         viewer.cam.lookat[0] = d_viewer.xpos[thorax_id, 0]
@@ -313,10 +320,12 @@ def run_interactive_mujoco(
                     traj_step = min(episode_step, env.env._task._traj_generator._qpos.shape[0] - 1)
                     ref_z = env.env._task._traj_generator._qpos[traj_step, 2]
                     b_ref = ref_banks[traj_step] if ref_banks is not None else 0.0
+                    p_ref = ref_psis[traj_step] if ref_psis is not None else 0.0
                 except Exception:
                     ref_z = 0.50
                     b_ref = 0.0
-                conn_action = acro_decoder.decode(motor_rates, state['euler'], state=state, target_z=ref_z, bank_ref=b_ref)
+                    p_ref = 0.0
+                conn_action = acro_decoder.decode(motor_rates, state['euler'], state=state, target_z=ref_z, bank_ref=b_ref, psi_ref=p_ref)
             else:
                 conn_action = sim.decoder.decode(motor_rates, state['euler'], state=state, target_z=target_z)
 
@@ -358,6 +367,7 @@ def run_interactive_mujoco(
                     sim.circuit.reset()
                 acro_decoder.reset()
                 if takeoff:
+                    env.set_ground_stance(ground_z=0.05, pitch_deg=-47.5)
                     env.trigger_takeoff_jump(jump_speed=1.2, forward_speed=0.0)
                 if ribbon_points is not None:
                     render_trajectory(viewer, ribbon_points, stride=1)

@@ -204,13 +204,14 @@ When subjected to a sudden **$+5.0\text{ rad/s}$ to $+6.0\text{ rad/s}$** crossw
 - **Recovery Time**: **$21.4\text{ milliseconds}$** (less than 4 wingbeat cycles).
 - **Altitude Drop During Shock**: **$0.0\text{ cm}$**.
 
-### 5.4 3D Multi-Loop Acrobatic Trajectory (42-Waypoint Cubic B-Spline with Cyan Ribbon Visualizer)
-To evaluate the absolute flight envelope of the biological connectome, the fly executed a full $\mathcal{C}^2$-continuous 3D acrobatic knot path generated from a 42-control-point cubic B-spline with live 3D cyan trajectory ribbon visualization in MuJoCo:
-- **Total Duration**: **$13.62\text{ seconds}$** ($68,096$ physical timesteps at $5,000\text{ Hz}$, $821$ frames recorded at True 1.0x 60 FPS HD).
-- **Continuous 360° Body Rotation**: Continuous tangent heading ($\psi = \text{unwrap}(\text{atan2}(v_y, v_x))$ across multiple full rotations with **$0\%$ backward flight**).
-- **Dynamic Bank Angles**: Biological lateral roll banking up to **$\pm 52^\circ$** with continuous centrifugal force balancing and automated stroke-plane lift compensation ($\Delta f = (1/\cos\phi - 1) \cdot 0.20$).
-- **3D Path Tracking Accuracy**: Mean 3D trajectory tracking error of **$10.43\text{ cm}$** (median **$10.27\text{ cm}$**) across complex multi-loop reversals.
-- **Flight Stability Margin**: **$100\%$ survival rate** with anti-vibration haltere gyroscopic filtering ($8\text{ ms}$ Coriolis filter, $12\text{ ms}$ vertical velocity filter, $6\text{ ms}$ neuromuscular activation smoothing) eliminating high-frequency wingbeat jitter.
+### 5.4 3D Multi-Loop Acrobatic Trajectory (Spaced-Out 42-Waypoint Cubic B-Spline with Cyan Ribbon Visualizer)
+To evaluate the absolute flight envelope of the biological connectome, the fly executed a full $\mathcal{C}^2$-continuous 3D acrobatic knot path generated from a 42-control-point cubic B-spline with live 3D cyan trajectory ribbon visualization in MuJoCo, spaced out across an expansive flight volume:
+- **Total Duration**: **$23.77\text{ seconds}$** ($118,860$ physical timesteps at $5,000\text{ Hz}$, $1,433$ frames recorded at True 1.0x 60 FPS HD, Playback: $23.88\text{ s}$).
+- **Expansive Spaced-Out Envelope**: Trajectory expanded from confined loops into an open flight corridor of **$1.45\text{ m}$ width $\times 1.29\text{ m}$ depth** with a **$52\text{ cm}$ vertical envelope** ($0.36\text{ m}$ to $0.88\text{ m}$ altitude), yielding a total path length of **$19.02\text{ meters}$** ($+112\%$ longer and wider).
+- **Continuous 360° Body Rotation & Tangent Alignment**: Rigid coordinate rotation aligns the initial tangent vector with the forward launch axis (+X) for smooth ground takeoff; continuous tangent heading ($\psi = \text{unwrap}(\text{atan2}(v_y, v_x))$) across multiple full 360° rotations with **$0\%$ backward flight**.
+- **Dynamic Bank Angles**: Biological lateral roll banking up to **$+75.4^\circ$** with continuous centrifugal force balancing and automated stroke-plane lift compensation ($\Delta f = (1/\cos\phi - 1) \cdot 0.20$).
+- **3D Path Tracking Accuracy**: Mean 3D trajectory tracking error of **$16.18\text{ cm}$** (median **$14.39\text{ cm}$**) across expansive multi-loop reversals.
+- **Flight Stability Margin**: **$100\%$ survival rate** ($0$ crashes across all 118,860 simulation steps) with anti-vibration haltere gyroscopic filtering ($8\text{ ms}$ Coriolis filter, $12\text{ ms}$ vertical velocity filter, $6\text{ ms}$ neuromuscular activation smoothing) eliminating high-frequency wingbeat jitter.
 - **Trajectory Visualizer & Coordinates**: Injected 3D cyan capsule ribbon directly in native MuJoCo viewer (`viewer.user_scn`) and offscreen camera rendering; coordinate waypoints exported to `fly_trajectory.csv`.
 
 <p align="center">
