@@ -155,22 +155,59 @@ def run_interactive_mujoco(
         task.check_termination = types.MethodType(safe_term, task)
 
     class AcrobaticBalancedDecoder:
+        """
+        Ultra-Smooth Biological Motor Decoder v2 with:
+        - 2nd-order Butterworth LPF (12Hz cutoff) on angular velocity
+        - Extended haltere gyro filter (τ=20ms), vertical velocity filter (τ=30ms)
+        - Extended neuromuscular smoothing (τ=18ms)
+        - Reduced PD gains to eliminate controller-induced wobble
+        - Integral altitude controller with anti-windup
+        """
         def __init__(self, sim, task_dt: float = 0.0002):
             self.sim = sim
             self.dt = task_dt
-            self.alpha_gyro = task_dt / (0.008 + task_dt)
-            self.alpha_vz = task_dt / (0.012 + task_dt)
-            self.alpha_act = task_dt / (0.006 + task_dt)
+            self.alpha_gyro = task_dt / (0.020 + task_dt)
+            self.alpha_vz = task_dt / (0.030 + task_dt)
+            self.alpha_act = task_dt / (0.018 + task_dt)
+
+            # 2nd-order Butterworth LPF coefficients (12Hz cutoff at 5000Hz)
+            import math
+            fc = 12.0
+            fs = 1.0 / task_dt
+            omega_c = 2.0 * math.pi * fc / fs
+            omega_p = math.tan(omega_c / 2.0)
+            omega_p2 = omega_p * omega_p
+            sqrt2 = math.sqrt(2.0)
+            denom = 1.0 + sqrt2 * omega_p + omega_p2
+            self.bw_b0 = omega_p2 / denom
+            self.bw_b1 = 2.0 * self.bw_b0
+            self.bw_b2 = self.bw_b0
+            self.bw_a1 = 2.0 * (omega_p2 - 1.0) / denom
+            self.bw_a2 = (1.0 - sqrt2 * omega_p + omega_p2) / denom
+            self.bw_z1 = np.zeros(3)
+            self.bw_z2 = np.zeros(3)
+
+            self.alt_integral = 0.0
+            self.alt_int_max = 0.35
             self.filt_ang_vel = np.zeros(3)
             self.filt_vz = 0.0
             self.prev_action = np.zeros(12)
 
         def reset(self):
             self.filt_ang_vel = np.zeros(3)
+            self.bw_z1 = np.zeros(3)
+            self.bw_z2 = np.zeros(3)
             self.filt_vz = 0.0
             self.prev_action = np.zeros(12)
+            self.alt_integral = 0.0
 
-        def decode(self, motor_rates, current_euler, state=None, target_z=None, bank_ref=0.0, psi_ref=0.0):
+        def _butterworth2_step(self, x):
+            y = self.bw_b0 * x + self.bw_z1
+            self.bw_z1 = self.bw_b1 * x - self.bw_a1 * y + self.bw_z2
+            self.bw_z2 = self.bw_b2 * x - self.bw_a2 * y
+            return y
+
+        def decode(self, motor_rates, current_euler, state=None, target_z=None, bank_ref=0.0, psi_ref=0.0, t=0.0):
             r0 = self.sim.decoder.r0_steer
             r0_pwr = self.sim.decoder.r0_power
             diff_yaw = (motor_rates.get('yaw_L', r0) - r0) - (motor_rates.get('yaw_R', r0) - r0)
@@ -186,6 +223,8 @@ def run_interactive_mujoco(
             
             raw_ang_vel = state.get('ang_vel', np.zeros(3)) if state else np.zeros(3)
             self.filt_ang_vel = (1.0 - self.alpha_gyro) * self.filt_ang_vel + self.alpha_gyro * raw_ang_vel
+            smooth_ang_vel = self._butterworth2_step(self.filt_ang_vel)
+
             raw_vz = state.get('lin_vel', np.zeros(3))[2] if state else 0.0
             self.filt_vz = (1.0 - self.alpha_vz) * self.filt_vz + self.alpha_vz * raw_vz
             
@@ -193,14 +232,14 @@ def run_interactive_mujoco(
             pitch_err = current_euler[1] - np.deg2rad(-47.5)
             yaw_err = current_euler[2] - psi_ref
             
-            pd_roll = -0.35 * roll_err - 0.015 * self.filt_ang_vel[0]
-            pd_pitch = -0.35 * pitch_err - 0.012 * self.filt_ang_vel[1]
-            pd_yaw = -0.010 * self.filt_ang_vel[2]
+            pd_roll  = -0.16 * roll_err  - 0.008 * smooth_ang_vel[0]
+            pd_pitch = -0.16 * pitch_err - 0.007 * smooth_ang_vel[1]
+            pd_yaw   = -0.006 * smooth_ang_vel[2]
             
             action = np.zeros(12)
-            action[0] = np.clip(-0.2 * yaw_err, -0.15, 0.15)
-            action[1] = np.clip(-0.3 * roll_err, -0.4, 0.4)
-            action[2] = np.clip(-0.2 * pitch_err, -0.1, 0.1)
+            action[0] = np.clip(-0.12 * yaw_err, -0.10, 0.10)
+            action[1] = np.clip(-0.18 * roll_err, -0.25, 0.25)
+            action[2] = np.clip(-0.12 * pitch_err, -0.08, 0.08)
 
             action[3] = np.clip(conn_yaw + pd_roll, -1.0, 1.0)
             action[4] = np.clip(conn_roll + pd_pitch, -1.0, 1.0)
@@ -208,21 +247,29 @@ def run_interactive_mujoco(
             action[6] = np.clip(-conn_yaw - pd_roll, -1.0, 1.0)
             action[7] = np.clip(conn_roll + pd_pitch, -1.0, 1.0)
             action[8] = np.clip(-conn_pitch, -1.0, 1.0)
-            action[9] = np.clip(0.5 * pd_yaw, -0.7, 0.7)
+            action[9] = np.clip(0.35 * pd_yaw, -0.5, 0.5)
             
             delta_freq = self.sim.decoder.k_freq * (dlm_mean - dvm_mean)
             if target_z is not None and state is not None:
                 alt_err = target_z - state['pos'][2]
                 cos_roll = max(0.5, np.cos(current_euler[0]))
-                bank_comp = (1.0 / cos_roll - 1.0) * 0.20
-                delta_freq += 2.0 * alt_err - 0.012 * self.filt_vz + 0.16 + bank_comp
+                bank_comp = (1.0 / cos_roll - 1.0) * 0.25
+                self.alt_integral += alt_err * self.dt
+                self.alt_integral = np.clip(self.alt_integral, -self.alt_int_max, self.alt_int_max)
+                delta_freq += (3.5 * alt_err
+                             + 1.8 * self.alt_integral
+                             - 0.015 * self.filt_vz
+                             + 0.16
+                             + bank_comp)
+                if state['pos'][2] < 0.12 and t > 0.35:
+                    delta_freq += 0.45
             action[11] = np.clip(delta_freq, -1.0, 1.0)
             
             smoothed = (1.0 - self.alpha_act) * self.prev_action + self.alpha_act * action
             self.prev_action = smoothed.copy()
             return smoothed
 
-    acro_decoder = AcrobaticBalancedDecoder(sim, dt)
+    acro_decoder = AcrobaticBalancedDecoder(sim, env.dt_ctrl)
 
     state = env.reset(start_on_ground=takeoff)
     if takeoff:
@@ -325,11 +372,14 @@ def run_interactive_mujoco(
                     ref_z = 0.50
                     b_ref = 0.0
                     p_ref = 0.0
-                conn_action = acro_decoder.decode(motor_rates, state['euler'], state=state, target_z=ref_z, bank_ref=b_ref, psi_ref=p_ref)
+                conn_action = acro_decoder.decode(motor_rates, state['euler'], state=state, target_z=ref_z, bank_ref=b_ref, psi_ref=p_ref, t=sim_time)
             else:
                 conn_action = sim.decoder.decode(motor_rates, state['euler'], state=state, target_z=target_z)
 
             action = base_action + connectome_blend * conn_action
+            # Altitude channel: higher blend (0.40) for acrobatic Z tracking
+            if mode == 'acrobatic':
+                action[11] = base_action[11] + 0.40 * conn_action[11]
             action = np.clip(action, env.env.action_spec().minimum, env.env.action_spec().maximum)
 
             state, reward, done = env.step(action)

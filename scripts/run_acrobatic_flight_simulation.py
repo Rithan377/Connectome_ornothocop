@@ -322,7 +322,7 @@ def main():
         controller_type='connectome_hybrid',
         nodes_path='circuits/comprehensive_mobility_nodes.feather',
         edges_path='circuits/comprehensive_mobility_edges.feather',
-        connectome_blend=0.35
+        connectome_blend=0.22
     )
     env = sim.env
     env.env._task._traj_generator = loader
@@ -332,24 +332,72 @@ def main():
 
     class AcrobaticBalancedDecoder:
         """
-        Biological Motor Decoder with Haltere Gyroscopic Low-Pass Filtering
-        and Neuromuscular Muscle Activation Dynamics.
-        Removes intra-stroke 200 Hz wingbeat oscillation, delivering smooth acrobatic flight.
+        Ultra-Smooth Biological Motor Decoder v2 with:
+        - 2nd-order Butterworth low-pass filtering (cutoff 12Hz) on angular velocity
+          to completely suppress 50-300Hz wingbeat recoil before PD derivative terms
+        - Extended haltere gyroscopic filter (τ=20ms) for deeper mechanical recoil attenuation
+        - Extended vertical velocity filter (τ=30ms) for altitude rate smoothing
+        - Extended neuromuscular activation dynamics (τ=18ms) for actuator command smoothing
+        - Reduced PD gains to eliminate controller-induced low-frequency wobble (0.3-5Hz)
+        - Integral altitude controller with anti-windup for Z trajectory tracking
+        - Reduced connectome contribution amplitude to minimize neural noise injection
         """
         def __init__(self, sim, task_dt: float = 0.0002):
             self.sim = sim
             self.dt = task_dt
-            self.alpha_gyro = task_dt / (0.008 + task_dt)
-            self.alpha_vz = task_dt / (0.012 + task_dt)
-            self.alpha_act = task_dt / (0.006 + task_dt)
+
+            # --- Stage 1: Haltere gyro 1st-order IIR (τ=20ms, was 8ms) ---
+            self.alpha_gyro = task_dt / (0.020 + task_dt)
+
+            # --- Stage 2: 2nd-order Butterworth LPF on angular velocity ---
+            # Design: cutoff = 12Hz, sample rate = 5000Hz
+            # Pre-warped bilinear transform coefficients
+            import math
+            fc = 12.0                        # cutoff frequency (Hz)
+            fs = 1.0 / task_dt               # sample rate (5000 Hz)
+            omega_c = 2.0 * math.pi * fc / fs
+            omega_p = math.tan(omega_c / 2.0)  # pre-warp
+            omega_p2 = omega_p * omega_p
+            sqrt2 = math.sqrt(2.0)
+            denom = 1.0 + sqrt2 * omega_p + omega_p2
+            self.bw_b0 = omega_p2 / denom
+            self.bw_b1 = 2.0 * self.bw_b0
+            self.bw_b2 = self.bw_b0
+            self.bw_a1 = 2.0 * (omega_p2 - 1.0) / denom
+            self.bw_a2 = (1.0 - sqrt2 * omega_p + omega_p2) / denom
+            # State for 3-axis 2nd-order filter (Direct Form II Transposed)
+            self.bw_z1 = np.zeros(3)  # delay state 1
+            self.bw_z2 = np.zeros(3)  # delay state 2
+
+            # --- Stage 3: Vertical velocity 1st-order IIR (τ=30ms, was 12ms) ---
+            self.alpha_vz = task_dt / (0.030 + task_dt)
+
+            # --- Stage 4: Neuromuscular actuator smoothing (τ=18ms, was 6ms) ---
+            self.alpha_act = task_dt / (0.018 + task_dt)
+
+            # --- Integral altitude controller state ---
+            self.alt_integral = 0.0
+            self.alt_int_max = 0.35          # anti-windup clamp
+
+            # Filter state
             self.filt_ang_vel = np.zeros(3)
             self.filt_vz = 0.0
             self.prev_action = np.zeros(12)
 
         def reset(self):
             self.filt_ang_vel = np.zeros(3)
+            self.bw_z1 = np.zeros(3)
+            self.bw_z2 = np.zeros(3)
             self.filt_vz = 0.0
             self.prev_action = np.zeros(12)
+            self.alt_integral = 0.0
+
+        def _butterworth2_step(self, x):
+            """Apply 2nd-order Butterworth LPF (Direct Form II Transposed) per axis."""
+            y = self.bw_b0 * x + self.bw_z1
+            self.bw_z1 = self.bw_b1 * x - self.bw_a1 * y + self.bw_z2
+            self.bw_z2 = self.bw_b2 * x - self.bw_a2 * y
+            return y
 
         def decode(self, motor_rates, current_euler, state=None, target_z=None, bank_ref=0.0, psi_ref=0.0, t=0.0):
             r0 = self.sim.decoder.r0_steer
@@ -365,11 +413,15 @@ def main():
             dlm_mean = ((motor_rates.get('DLM_L', r0_pwr) - r0_pwr) + (motor_rates.get('DLM_R', r0_pwr) - r0_pwr)) / 2.0
             dvm_mean = ((motor_rates.get('DVM_L', r0_pwr) - r0_pwr) + (motor_rates.get('DVM_R', r0_pwr) - r0_pwr)) / 2.0
             
-            # Haltere Gyroscopic Coriolis Rate Filtering
+            # --- STAGE 1: Haltere Gyroscopic Coriolis 1st-order IIR (τ=20ms) ---
             raw_ang_vel = state.get('ang_vel', np.zeros(3)) if state else np.zeros(3)
             self.filt_ang_vel = (1.0 - self.alpha_gyro) * self.filt_ang_vel + self.alpha_gyro * raw_ang_vel
             
-            # Vertical velocity filtering
+            # --- STAGE 2: 2nd-order Butterworth LPF (12Hz cutoff) on haltere output ---
+            # Completely eliminates 50-300Hz wingbeat mechanical recoil from PD derivative path
+            smooth_ang_vel = self._butterworth2_step(self.filt_ang_vel)
+            
+            # --- STAGE 3: Vertical velocity 1st-order IIR (τ=30ms) ---
             raw_vz = state.get('lin_vel', np.zeros(3))[2] if state else 0.0
             self.filt_vz = (1.0 - self.alpha_vz) * self.filt_vz + self.alpha_vz * raw_vz
             
@@ -377,33 +429,51 @@ def main():
             pitch_err = current_euler[1] - np.deg2rad(-47.5)
             yaw_err = current_euler[2] - psi_ref
             
-            pd_roll = -0.35 * roll_err - 0.015 * self.filt_ang_vel[0]
-            pd_pitch = -0.35 * pitch_err - 0.012 * self.filt_ang_vel[1]
-            pd_yaw = -0.010 * self.filt_ang_vel[2]
+            # --- Reduced PD gains (was P=0.35/D=0.015, now P=0.16/D=0.008) ---
+            # Lower P eliminates controller-induced 0.3-5Hz wobble oscillation
+            # D term uses Butterworth-filtered angular velocity (zero wingbeat energy)
+            pd_roll  = -0.16 * roll_err  - 0.008 * smooth_ang_vel[0]
+            pd_pitch = -0.16 * pitch_err - 0.007 * smooth_ang_vel[1]
+            pd_yaw   = -0.006 * smooth_ang_vel[2]
             
             action = np.zeros(12)
-            action[0] = np.clip(-0.2 * yaw_err, -0.15, 0.15)
-            action[1] = np.clip(-0.3 * roll_err, -0.4, 0.4)
-            action[2] = np.clip(-0.2 * pitch_err, -0.1, 0.1)
+            # Head VOR actuators (reduced gains for less jitter injection)
+            action[0] = np.clip(-0.12 * yaw_err, -0.10, 0.10)
+            action[1] = np.clip(-0.18 * roll_err, -0.25, 0.25)
+            action[2] = np.clip(-0.12 * pitch_err, -0.08, 0.08)
 
+            # Wing steering actuators (connectome + PD corrections)
             action[3] = np.clip(conn_yaw + pd_roll, -1.0, 1.0)
             action[4] = np.clip(conn_roll + pd_pitch, -1.0, 1.0)
             action[5] = np.clip(conn_pitch, -1.0, 1.0)
             action[6] = np.clip(-conn_yaw - pd_roll, -1.0, 1.0)
             action[7] = np.clip(conn_roll + pd_pitch, -1.0, 1.0)
             action[8] = np.clip(-conn_pitch, -1.0, 1.0)
-            action[9] = np.clip(0.5 * pd_yaw, -0.7, 0.7)
+            # Abdomen yaw (reduced)
+            action[9] = np.clip(0.35 * pd_yaw, -0.5, 0.5)
             
+            # --- Altitude PID with integral + anti-windup ---
             delta_freq = self.sim.decoder.k_freq * (dlm_mean - dvm_mean)
             if target_z is not None and state is not None:
                 alt_err = target_z - state['pos'][2]
                 cos_roll = max(0.5, np.cos(current_euler[0]))
-                bank_comp = (1.0 / cos_roll - 1.0) * 0.20
-                delta_freq += 2.0 * alt_err - 0.012 * self.filt_vz + 0.16 + bank_comp
+                bank_comp = (1.0 / cos_roll - 1.0) * 0.25
+
+                # Integral term with anti-windup clamping
+                self.alt_integral += alt_err * self.dt
+                self.alt_integral = np.clip(self.alt_integral, -self.alt_int_max, self.alt_int_max)
+
+                # PID altitude: P=3.5, I=1.8, D=-0.015 on filtered Vz
+                delta_freq += (3.5 * alt_err
+                             + 1.8 * self.alt_integral
+                             - 0.015 * self.filt_vz
+                             + 0.16
+                             + bank_comp)
                 if state['pos'][2] < 0.12 and t > 0.35:
-                    delta_freq += 0.40
+                    delta_freq += 0.45
             action[11] = np.clip(delta_freq, -1.0, 1.0)
             
+            # --- STAGE 4: Neuromuscular activation smoothing (τ=18ms) ---
             smoothed = (1.0 - self.alpha_act) * self.prev_action + self.alpha_act * action
             self.prev_action = smoothed.copy()
             return smoothed
@@ -513,6 +583,12 @@ def main():
         p_ref = ref_psis[s]
         conn_action = decoder.decode(motor_rates, state['euler'], state=state, target_z=ref_z, bank_ref=b_ref, psi_ref=p_ref, t=t)
         action = base_action + sim.connectome_blend * conn_action
+
+        # Altitude channel: use higher blend (0.40) for action[11] only
+        # Standard blend 0.22 gives effective P=0.77 (too weak for Z tracking)
+        # 0.40 blend gives effective P=1.40, I=0.72 (tracks altitude envelope)
+        action[11] = base_action[11] + 0.40 * conn_action[11]
+
         action = np.clip(action, env.env.action_spec().minimum, env.env.action_spec().maximum)
 
         state, r, d = env.step(action)
