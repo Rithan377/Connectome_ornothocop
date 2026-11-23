@@ -51,6 +51,7 @@
   - [5.1 Terrestrial Takeoff Jump ($1.2\text{ m/s}$)](#51-terrestrial-takeoff-jump-12text-ms)
   - [5.2 Multi-Zone Free-Flight Exploration ($2.3 - 6.3\text{ m/s}$)](#52-multi-zone-free-flight-exploration-23---63text-ms)
   - [5.3 Instantaneous Gust Rejection ($21.4\text{ ms}$)](#53-instantaneous-gust-rejection-214text-ms)
+  - [5.4 3D Multi-Loop Acrobatic Trajectory (Helical Corkscrew, Banked Saccade & Diagonal Dive)](#54-3d-multi-loop-acrobatic-trajectory-helical-corkscrew-banked-saccade--diagonal-dive)
 - [6. Statistical Validation & Benchmarks](#6-statistical-validation--benchmarks)
   - [6.1 Monte Carlo Perturbation Trials ($N > 1,000$)](#61-monte-carlo-perturbation-trials-n--1000)
   - [6.2 Targeted Neuron-Ablation Analysis](#62-targeted-neuron-ablation-analysis)
@@ -203,6 +204,21 @@ When subjected to a sudden **$+5.0\text{ rad/s}$ to $+6.0\text{ rad/s}$** crossw
 - **Recovery Time**: **$21.4\text{ milliseconds}$** (less than 4 wingbeat cycles).
 - **Altitude Drop During Shock**: **$0.0\text{ cm}$**.
 
+### 5.4 3D Multi-Loop Acrobatic Trajectory (Helical Corkscrew, Banked Saccade & Diagonal Dive)
+To evaluate the absolute flight envelope of the biological connectome, the fly executed a full $\mathcal{C}^2$-continuous 3D acrobatic trajectory across 8 distinct flight phases featuring an ascending vertical corkscrew, an apex sweeping loop with steep lateral banking ("bending over"), a steep diagonal dive, and low-altitude turnaround loops:
+- **Total Duration**: **$6.60\text{ seconds}$** ($33,000$ physical timesteps at $5,000\text{ Hz}$).
+- **Peak Flight Speed**: **$10.75\text{ m/s}$ ($1,075.3\text{ cm/s}$)** reached during steep diagonal dive entry.
+- **Mean Cruise Velocity**: **$2.56\text{ m/s}$ ($255.5\text{ cm/s}$)** matching wild *Drosophila* high-speed pursuit.
+- **Dynamic Bank Angles**: Controlled lateral roll banking up to **$\pm 29.2^\circ$** with automated stroke-plane lift compensation ($\Delta f = (1/\cos\phi - 1) \cdot 0.20$).
+- **3D Path Tracking Accuracy**: Mean trajectory error of **$14.01\text{ cm}$** ($\text{RMSE} = 16.22\text{ cm}$) across multi-loop reversals.
+- **Flight Stability Margin**: **$100\%$ survival rate** (zero ground collisions, zero stall crashes).
+
+<p align="center">
+  <img src="assets/acrobatic_flight_profile.png" alt="3D Acrobatic Multi-Loop Flight Profile" width="95%">
+  <br>
+  <i>Figure 6: 3D Acrobatic Multi-Loop Flight Profile: 3D spatial flight path, altitude tracking, multi-axis velocities, Euler attitude angles, SNN flight power firing rates (DLM), and bilateral wing steering muscle coordination.</i>
+</p>
+
 ---
 
 ## 6. Statistical Validation & Benchmarks
@@ -210,7 +226,7 @@ When subjected to a sudden **$+5.0\text{ rad/s}$ to $+6.0\text{ rad/s}$** crossw
 <p align="center">
   <img src="assets/fig10_flybody_connectome_ablation_and_monte_carlo.png" alt="Ablation & Monte Carlo Validation" width="90%">
   <br>
-  <i>Figure 6: Monte Carlo Error Ellipsoids and Flight Stability Degradation Curves Across Targeted Circuit Ablations.</i>
+  <i>Figure 7: Monte Carlo Error Ellipsoids and Flight Stability Degradation Curves Across Targeted Circuit Ablations.</i>
 </p>
 
 ### 6.1 Monte Carlo Perturbation Trials ($N > 1,000$)
@@ -221,7 +237,7 @@ To quantify flight stability, we conducted over **1,000 Monte Carlo simulation r
 <p align="center">
   <img src="assets/comprehensive_vs_baseline_stability.png" alt="Baseline vs Comprehensive Connectome Stability" width="85%">
   <br>
-  <i>Figure 7: Comparison Between Minimal Baseline (897n) and Comprehensive Connectome (10,668n) Under 6.0 rad/s Roll Perturbation.</i>
+  <i>Figure 8: Comparison Between Minimal Baseline (897n) and Comprehensive Connectome (10,668n) Under 6.0 rad/s Roll Perturbation.</i>
 </p>
 
 ### 6.2 Targeted Neuron-Ablation Analysis
@@ -311,6 +327,9 @@ Launch the fruit fly in the interactive 3D desktop viewer:
 ```bash
 # Launch interactive 7-zone exploratory free flight
 ./run_mujoco.sh --mode exploratory
+
+# 3D acrobatic multi-loop flight (helical corkscrew, apex loop, diagonal dive)
+./run_mujoco.sh --mode acrobatic
 
 # Hover station-keeping with automatic ground takeoff jump
 ./run_mujoco.sh --mode hover

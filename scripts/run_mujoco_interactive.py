@@ -87,7 +87,7 @@ def run_interactive_mujoco(
         climb_duration=0.40
     )
 
-    if mode == 'exploratory':
+    if mode in ('exploratory', 'acrobatic'):
         sim.decoder.use_ref_tracking = False
         import types
         task = env.env._task
@@ -203,7 +203,7 @@ def run_interactive_mujoco(
             viewer.sync()
 
             # Episode looping: only reset on genuine crash (below floor after launch or inverted)
-            if mode == 'exploratory':
+            if mode in ('exploratory', 'acrobatic'):
                 is_crashed = (sim_time > 0.40) and (state['pos'][2] < 0.025)
             else:
                 is_crashed = (sim_time > 0.40) and (state['pos'][2] < 0.025 or abs(state['euler'][0]) > np.deg2rad(120.0))
@@ -265,8 +265,8 @@ if __name__ == '__main__':
     parser.add_argument('--brain', type=str, default='comprehensive', choices=['comprehensive', 'baseline'],
                         help='Brain model: comprehensive (10,668n) or baseline (897n)')
     parser.add_argument('--blend', type=float, default=0.35, help='Connectome blend factor (default 0.35)')
-    parser.add_argument('--mode', type=str, default='hover', choices=['hover', 'cruise', 'loop', 'diagonal', 'exploratory'],
-                        help='Flight maneuver: hover, cruise, loop, diagonal, or exploratory')
+    parser.add_argument('--mode', type=str, default='hover', choices=['hover', 'cruise', 'loop', 'diagonal', 'exploratory', 'acrobatic'],
+                        help='Flight maneuver: hover, cruise, loop, diagonal, exploratory, or acrobatic')
     parser.add_argument('--speed', type=float, default=None, help='Flight speed in m/s (default: 0.70 m/s for cruise)')
     parser.add_argument('--auto-perturb', action='store_true', help='Enable automatic periodic perturbation kicks')
     parser.add_argument('--kick', type=float, default=5.0, help='Perturbation kick magnitude (rad/s)')

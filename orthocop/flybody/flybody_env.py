@@ -184,9 +184,13 @@ class FlyBodyFlightEnv:
             yw = 0.0 if yaw_speed is None else yaw_speed
             bk = 10.0 if bank_deg is None else bank_deg   # 10° right bank
             hd = np.deg2rad(35.0 if heading_deg == 0.0 else heading_deg)
-        elif mode == 'exploratory':
-            from scripts.render_exploratory_flight import generate_exploratory_mission_trajectory
-            qpos, qvel, total_duration, _ = generate_exploratory_mission_trajectory(task_dt)
+        elif mode in ('exploratory', 'acrobatic'):
+            if mode == 'acrobatic':
+                from scripts.run_acrobatic_flight_simulation import generate_acrobatic_multiloop_trajectory
+                qpos, qvel, total_duration, _ = generate_acrobatic_multiloop_trajectory(task_dt)
+            else:
+                from scripts.render_exploratory_flight import generate_exploratory_mission_trajectory
+                qpos, qvel, total_duration, _ = generate_exploratory_mission_trajectory(task_dt)
             loader = InferenceFlightTrajectoryLoader()
             loader.set_next_trajectory(qpos, qvel)
             self.env._task._traj_generator = loader

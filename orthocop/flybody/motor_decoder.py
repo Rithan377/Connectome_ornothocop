@@ -160,8 +160,9 @@ class MotorDecoder:
                 # Positive x = ghost is ahead, positive z = ghost is above
                 pos_error = ref_disp[0]
         elif euler_angles is not None:
-            # Fallback: track level flight (euler = 0)
-            euler_error = euler_angles
+            # Fallback: track nominal flight trim (roll=0, pitch=-47.5 deg, yaw=0)
+            euler_error = euler_angles.copy()
+            euler_error[1] = euler_angles[1] - np.deg2rad(-47.5)
 
         # --- Use angular velocity from state if available (more accurate than finite diff) ---
         ang_vel = np.zeros(3)
@@ -259,7 +260,9 @@ class MotorDecoder:
         if target_z is not None and state is not None:
             alt_err = target_z - state['pos'][2]
             vz = state['lin_vel'][2]
-            delta_freq += 1.2 * alt_err - 0.008 * vz + 0.15
+            cos_roll = max(0.5, np.cos(state['euler'][0]))
+            bank_comp = (1.0 / cos_roll - 1.0) * 0.20
+            delta_freq += 1.4 * alt_err - 0.012 * vz + 0.16 + bank_comp
         action[11] = np.clip(delta_freq, -1.0, 1.0)
 
         # --- Smooth action transitions via 1st-order low-pass filter ---
