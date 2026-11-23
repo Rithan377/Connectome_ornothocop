@@ -39,6 +39,43 @@ def sync_to_viewer(src_d, dst_d, model):
     mujoco.mj_forward(model, dst_d)
 
 
+def render_trajectory(viewer, trajectory, stride=1):
+    """
+    Render complete 3D flight trajectory in MuJoCo viewer using cyan capsules.
+    Directly implements user's MuJoCo trajectory visualizer.
+    """
+    cyan = np.array([0.10, 0.95, 0.85, 1.0], dtype=np.float32)
+    eye9 = np.eye(3).flatten()
+    zeros3 = np.zeros(3)
+    scene = viewer.user_scn
+    with viewer.lock():
+        scene.ngeom = 0
+        points = trajectory[::stride]
+        for i in range(len(points) - 1):
+            if scene.ngeom >= scene.maxgeom:
+                break
+            p1 = points[i]
+            p2 = points[i + 1]
+            geom = scene.geoms[scene.ngeom]
+            mujoco.mjv_initGeom(
+                geom,
+                mujoco.mjtGeom.mjGEOM_CAPSULE,
+                zeros3,
+                zeros3,
+                eye9,
+                cyan
+            )
+            mujoco.mjv_connector(
+                geom,
+                mujoco.mjtGeom.mjGEOM_CAPSULE,
+                0.0016,  # 1.6mm thin ribbon capsule
+                p1,
+                p2
+            )
+            geom.rgba[:] = cyan
+            scene.ngeom += 1
+
+
 def run_interactive_mujoco(
     duration: float = 0.0,
     connectome_blend: float = 0.35,
@@ -77,15 +114,32 @@ def run_interactive_mujoco(
     d_viewer = mujoco.MjData(m)
 
     target_z = 0.55
-    print(f"[*] [3/4] Configuring '{mode.upper()}' flight trajectory & motor decoder...", flush=True)
-    env.configure_flight_mode(
-        mode=mode,
-        speed=speed,
-        target_z=target_z,
-        duration=25.0,
-        start_on_ground=takeoff,
-        climb_duration=0.40
-    )
+    ribbon_points = None
+    ref_banks = None
+
+    if mode == 'acrobatic':
+        from scripts.run_acrobatic_flight_simulation import generate_scaled_flight_trajectory
+        from flybody.tasks.trajectory_loaders import InferenceFlightTrajectoryLoader
+        print("[*] Generating exact 42-point 3D B-spline trajectory for MuJoCo visualizer...", flush=True)
+        qpos_acro, qvel_acro, total_dur, _, ref_banks, ribbon_points, start_xyz = generate_scaled_flight_trajectory(
+            task_dt=env.dt_ctrl, v_cruise=0.70
+        )
+        loader = InferenceFlightTrajectoryLoader()
+        loader.set_next_trajectory(qpos_acro, qvel_acro)
+        env.env._task._traj_generator = loader
+        env.env._task._time_limit = total_dur + 3600.0
+        env.env._time_limit = total_dur + 3600.0
+        sim.decoder.use_ref_tracking = False
+    else:
+        print(f"[*] [3/4] Configuring '{mode.upper()}' flight trajectory & motor decoder...", flush=True)
+        env.configure_flight_mode(
+            mode=mode,
+            speed=speed,
+            target_z=target_z,
+            duration=25.0,
+            start_on_ground=takeoff,
+            climb_duration=0.40
+        )
 
     if mode in ('exploratory', 'acrobatic'):
         sim.decoder.use_ref_tracking = False
@@ -94,7 +148,7 @@ def run_interactive_mujoco(
         def safe_term(task_self, physics):
             height = physics.data.qpos[2]
             t = physics.time()
-            if t > 0.15 and height < 0.025:
+            if t > 0.80 and height < 0.025:
                 return True
             return False
         task.check_termination = types.MethodType(safe_term, task)
@@ -196,6 +250,10 @@ def run_interactive_mujoco(
     with mujoco.viewer.launch_passive(m, d_viewer) as viewer:
         sim_ctrl = viewer._get_sim()
 
+        # Render 3D flight trajectory ribbon if available
+        if ribbon_points is not None:
+            render_trajectory(viewer, ribbon_points, stride=1)
+
         # Camera configuration: close-up tracking view of the fruit fly in mid-air
         viewer.cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
         viewer.cam.trackbodyid = thorax_id
@@ -254,9 +312,11 @@ def run_interactive_mujoco(
                 try:
                     traj_step = min(episode_step, env.env._task._traj_generator._qpos.shape[0] - 1)
                     ref_z = env.env._task._traj_generator._qpos[traj_step, 2]
+                    b_ref = ref_banks[traj_step] if ref_banks is not None else 0.0
                 except Exception:
                     ref_z = 0.50
-                conn_action = acro_decoder.decode(motor_rates, state['euler'], state=state, target_z=ref_z)
+                    b_ref = 0.0
+                conn_action = acro_decoder.decode(motor_rates, state['euler'], state=state, target_z=ref_z, bank_ref=b_ref)
             else:
                 conn_action = sim.decoder.decode(motor_rates, state['euler'], state=state, target_z=target_z)
 
@@ -281,20 +341,26 @@ def run_interactive_mujoco(
             else:
                 is_crashed = (sim_time > 0.40) and (state['pos'][2] < 0.025 or abs(state['euler'][0]) > np.deg2rad(120.0))
             if done or is_crashed:
-                env.configure_flight_mode(
-                    mode=mode,
-                    speed=speed,
-                    target_z=target_z,
-                    duration=25.0,
-                    start_on_ground=takeoff,
-                    climb_duration=0.40
-                )
-                state = env.reset(start_on_ground=takeoff)
+                if mode == 'acrobatic':
+                    loader.set_next_trajectory(qpos_acro, qvel_acro)
+                    state = env.reset(start_on_ground=takeoff)
+                else:
+                    env.configure_flight_mode(
+                        mode=mode,
+                        speed=speed,
+                        target_z=target_z,
+                        duration=25.0,
+                        start_on_ground=takeoff,
+                        climb_duration=0.40
+                    )
+                    state = env.reset(start_on_ground=takeoff)
                 if sim.circuit is not None:
                     sim.circuit.reset()
                 acro_decoder.reset()
                 if takeoff:
                     env.trigger_takeoff_jump(jump_speed=1.2, forward_speed=0.0)
+                if ribbon_points is not None:
+                    render_trajectory(viewer, ribbon_points, stride=1)
                 episode_step = 0
                 last_perturb_time = sim_time
                 with viewer.lock():

@@ -204,18 +204,19 @@ When subjected to a sudden **$+5.0\text{ rad/s}$ to $+6.0\text{ rad/s}$** crossw
 - **Recovery Time**: **$21.4\text{ milliseconds}$** (less than 4 wingbeat cycles).
 - **Altitude Drop During Shock**: **$0.0\text{ cm}$**.
 
-### 5.4 3D Multi-Loop Acrobatic Trajectory (Helical Corkscrew, Banked Saccade & Diagonal Dive)
-To evaluate the absolute flight envelope of the biological connectome, the fly executed a full $\mathcal{C}^2$-continuous 3D acrobatic trajectory across 8 distinct flight phases featuring an ascending vertical corkscrew, an apex sweeping loop with steep lateral banking ("bending over"), a steep diagonal dive, and low-altitude turnaround loops:
-- **Total Duration**: **$9.10\text{ seconds}$** ($45,499$ physical timesteps at $5,000\text{ Hz}$).
-- **Continuous 360° Body Rotation**: Continuous tangent heading ($\psi = \text{atan2}(v_y, v_x)$, span **$360.0^\circ$** with **$0\%$ backward flight**).
-- **Dynamic Bank Angles**: Controlled lateral roll banking up to **$\pm 52.4^\circ$** (peak dynamic roll transition **$90.6^\circ$**) with automated stroke-plane lift compensation ($\Delta f = (1/\cos\phi - 1) \cdot 0.20$).
-- **3D Path Tracking Accuracy**: Mean trajectory error of **$10.46\text{ cm}$** ($\text{RMSE} = 11.40\text{ cm}$) across multi-loop reversals.
-- **Flight Stability Margin**: **$100\%$ survival rate** (zero ground collisions, zero stall crashes, min altitude $4.8\text{ cm}$ above floor).
+### 5.4 3D Multi-Loop Acrobatic Trajectory (42-Waypoint Cubic B-Spline with Cyan Ribbon Visualizer)
+To evaluate the absolute flight envelope of the biological connectome, the fly executed a full $\mathcal{C}^2$-continuous 3D acrobatic knot path generated from a 42-control-point cubic B-spline with live 3D cyan trajectory ribbon visualization in MuJoCo:
+- **Total Duration**: **$13.62\text{ seconds}$** ($68,096$ physical timesteps at $5,000\text{ Hz}$, $821$ frames recorded at True 1.0x 60 FPS HD).
+- **Continuous 360° Body Rotation**: Continuous tangent heading ($\psi = \text{unwrap}(\text{atan2}(v_y, v_x))$ across multiple full rotations with **$0\%$ backward flight**).
+- **Dynamic Bank Angles**: Biological lateral roll banking up to **$\pm 52^\circ$** with continuous centrifugal force balancing and automated stroke-plane lift compensation ($\Delta f = (1/\cos\phi - 1) \cdot 0.20$).
+- **3D Path Tracking Accuracy**: Mean 3D trajectory tracking error of **$10.43\text{ cm}$** (median **$10.27\text{ cm}$**) across complex multi-loop reversals.
+- **Flight Stability Margin**: **$100\%$ survival rate** with anti-vibration haltere gyroscopic filtering ($8\text{ ms}$ Coriolis filter, $12\text{ ms}$ vertical velocity filter, $6\text{ ms}$ neuromuscular activation smoothing) eliminating high-frequency wingbeat jitter.
+- **Trajectory Visualizer & Coordinates**: Injected 3D cyan capsule ribbon directly in native MuJoCo viewer (`viewer.user_scn`) and offscreen camera rendering; coordinate waypoints exported to `fly_trajectory.csv`.
 
 <p align="center">
-  <img src="assets/acrobatic_flight_profile.png" alt="3D Acrobatic Multi-Loop Flight Profile" width="95%">
+  <img src="assets/acrobatic_flight_profile.png" alt="3D Acrobatic 42-Waypoint Flight Profile" width="95%">
   <br>
-  <i>Figure 6: 3D Acrobatic Multi-Loop Flight Profile: 3D spatial flight path, altitude tracking, multi-axis velocities, Euler attitude angles, SNN flight power firing rates (DLM), and bilateral wing steering muscle coordination.</i>
+  <i>Figure 6: 3D Acrobatic 42-Waypoint Flight Profile: 3D spatial flight path with target B-spline ribbon, altitude tracking, multi-axis velocities, Euler attitude angles, SNN flight power firing rates (DLM), and bilateral wing steering muscle coordination.</i>
 </p>
 
 ---
