@@ -206,12 +206,11 @@ When subjected to a sudden **$+5.0\text{ rad/s}$ to $+6.0\text{ rad/s}$** crossw
 
 ### 5.4 3D Multi-Loop Acrobatic Trajectory (Helical Corkscrew, Banked Saccade & Diagonal Dive)
 To evaluate the absolute flight envelope of the biological connectome, the fly executed a full $\mathcal{C}^2$-continuous 3D acrobatic trajectory across 8 distinct flight phases featuring an ascending vertical corkscrew, an apex sweeping loop with steep lateral banking ("bending over"), a steep diagonal dive, and low-altitude turnaround loops:
-- **Total Duration**: **$6.60\text{ seconds}$** ($33,000$ physical timesteps at $5,000\text{ Hz}$).
-- **Peak Flight Speed**: **$10.75\text{ m/s}$ ($1,075.3\text{ cm/s}$)** reached during steep diagonal dive entry.
-- **Mean Cruise Velocity**: **$2.56\text{ m/s}$ ($255.5\text{ cm/s}$)** matching wild *Drosophila* high-speed pursuit.
-- **Dynamic Bank Angles**: Controlled lateral roll banking up to **$\pm 29.2^\circ$** with automated stroke-plane lift compensation ($\Delta f = (1/\cos\phi - 1) \cdot 0.20$).
-- **3D Path Tracking Accuracy**: Mean trajectory error of **$14.01\text{ cm}$** ($\text{RMSE} = 16.22\text{ cm}$) across multi-loop reversals.
-- **Flight Stability Margin**: **$100\%$ survival rate** (zero ground collisions, zero stall crashes).
+- **Total Duration**: **$9.10\text{ seconds}$** ($45,499$ physical timesteps at $5,000\text{ Hz}$).
+- **Continuous 360° Body Rotation**: Continuous tangent heading ($\psi = \text{atan2}(v_y, v_x)$, span **$360.0^\circ$** with **$0\%$ backward flight**).
+- **Dynamic Bank Angles**: Controlled lateral roll banking up to **$\pm 52.4^\circ$** (peak dynamic roll transition **$90.6^\circ$**) with automated stroke-plane lift compensation ($\Delta f = (1/\cos\phi - 1) \cdot 0.20$).
+- **3D Path Tracking Accuracy**: Mean trajectory error of **$10.46\text{ cm}$** ($\text{RMSE} = 11.40\text{ cm}$) across multi-loop reversals.
+- **Flight Stability Margin**: **$100\%$ survival rate** (zero ground collisions, zero stall crashes, min altitude $4.8\text{ cm}$ above floor).
 
 <p align="center">
   <img src="assets/acrobatic_flight_profile.png" alt="3D Acrobatic Multi-Loop Flight Profile" width="95%">

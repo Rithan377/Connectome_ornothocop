@@ -99,6 +99,47 @@ def run_interactive_mujoco(
             return False
         task.check_termination = types.MethodType(safe_term, task)
 
+    def acrobatic_balanced_decode(motor_rates, current_euler, state=None, target_z=None, bank_ref=0.0):
+        r0 = sim.decoder.r0_steer
+        r0_pwr = sim.decoder.r0_power
+        diff_yaw = (motor_rates.get('yaw_L', r0) - r0) - (motor_rates.get('yaw_R', r0) - r0)
+        diff_roll = (motor_rates.get('roll_L', r0) - r0) - (motor_rates.get('roll_R', r0) - r0)
+        diff_pitch = (motor_rates.get('pitch_L', r0) - r0) - (motor_rates.get('pitch_R', r0) - r0)
+        
+        conn_yaw = sim.decoder.k_yaw * diff_yaw
+        conn_roll = sim.decoder.k_roll * diff_roll
+        conn_pitch = sim.decoder.k_pitch * diff_pitch
+        
+        dlm_mean = ((motor_rates.get('DLM_L', r0_pwr) - r0_pwr) + (motor_rates.get('DLM_R', r0_pwr) - r0_pwr)) / 2.0
+        dvm_mean = ((motor_rates.get('DVM_L', r0_pwr) - r0_pwr) + (motor_rates.get('DVM_R', r0_pwr) - r0_pwr)) / 2.0
+        
+        roll_err = current_euler[0] - bank_ref
+        pitch_err = current_euler[1] - np.deg2rad(-47.5)
+        
+        ang_vel = state.get('ang_vel', np.zeros(3)) if state else np.zeros(3)
+        pd_roll = -0.35 * roll_err - 0.03 * ang_vel[0]
+        pd_pitch = -0.40 * pitch_err - 0.03 * ang_vel[1]
+        pd_yaw = -0.02 * ang_vel[2]
+        
+        action = np.zeros(12)
+        action[3] = np.clip(conn_yaw + pd_roll, -1.0, 1.0)
+        action[4] = np.clip(conn_roll + pd_pitch, -1.0, 1.0)
+        action[5] = np.clip(conn_pitch, -1.0, 1.0)
+        action[6] = np.clip(-conn_yaw - pd_roll, -1.0, 1.0)
+        action[7] = np.clip(conn_roll + pd_pitch, -1.0, 1.0)
+        action[8] = np.clip(-conn_pitch, -1.0, 1.0)
+        action[9] = np.clip(0.5 * pd_yaw, -0.7, 0.7)
+        
+        delta_freq = sim.decoder.k_freq * (dlm_mean - dvm_mean)
+        if target_z is not None and state is not None:
+            alt_err = target_z - state['pos'][2]
+            vz = state['lin_vel'][2]
+            cos_roll = max(0.5, np.cos(current_euler[0]))
+            bank_comp = (1.0 / cos_roll - 1.0) * 0.20
+            delta_freq += 1.5 * alt_err - 0.012 * vz + 0.16 + bank_comp
+        action[11] = np.clip(delta_freq, -1.0, 1.0)
+        return action
+
     state = env.reset(start_on_ground=takeoff)
     if sim.circuit is not None:
         sim.circuit.reset()
@@ -185,7 +226,15 @@ def run_interactive_mujoco(
 
             sensory = sim.encoder.update(state)
             motor_rates = sim.circuit.step(sensory)
-            conn_action = sim.decoder.decode(motor_rates, state['euler'], state=state, target_z=target_z)
+            if mode == 'acrobatic':
+                try:
+                    traj_step = min(episode_step, env.env._task._traj_generator._qpos.shape[0] - 1)
+                    ref_z = env.env._task._traj_generator._qpos[traj_step, 2]
+                except Exception:
+                    ref_z = 0.50
+                conn_action = acrobatic_balanced_decode(motor_rates, state['euler'], state=state, target_z=ref_z)
+            else:
+                conn_action = sim.decoder.decode(motor_rates, state['euler'], state=state, target_z=target_z)
 
             action = base_action + connectome_blend * conn_action
             action = np.clip(action, env.env.action_spec().minimum, env.env.action_spec().maximum)

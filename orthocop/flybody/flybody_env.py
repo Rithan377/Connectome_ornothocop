@@ -187,10 +187,10 @@ class FlyBodyFlightEnv:
         elif mode in ('exploratory', 'acrobatic'):
             if mode == 'acrobatic':
                 from scripts.run_acrobatic_flight_simulation import generate_acrobatic_multiloop_trajectory
-                qpos, qvel, total_duration, _ = generate_acrobatic_multiloop_trajectory(task_dt)
+                qpos, qvel, total_duration, *_ = generate_acrobatic_multiloop_trajectory(task_dt)
             else:
                 from scripts.render_exploratory_flight import generate_exploratory_mission_trajectory
-                qpos, qvel, total_duration, _ = generate_exploratory_mission_trajectory(task_dt)
+                qpos, qvel, total_duration, *_ = generate_exploratory_mission_trajectory(task_dt)
             loader = InferenceFlightTrajectoryLoader()
             loader.set_next_trajectory(qpos, qvel)
             self.env._task._traj_generator = loader
